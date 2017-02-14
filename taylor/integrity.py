@@ -45,7 +45,7 @@ def main(args=None):
     passed_size_check = filesize_check(
         local_filepath=args['local_filepath'],
         object_container=args['remote_container'],
-        object_name=args['remote_name']
+        object_name=args['remote_object']
     )
     sys.stdout.write('{}\n'.format('Passed' if passed_size_check else 'Failed'))
 
@@ -53,7 +53,7 @@ def main(args=None):
     passed_md5_check = md5_check(
         local_filepath=args['local_filepath'],
         object_container=args['remote_container'],
-        object_name=args['remote_name'],
+        object_name=args['remote_object'],
         segment_size=args['segment_size'],
         segment_container=args['segment_container']
     )
