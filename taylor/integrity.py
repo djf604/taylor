@@ -42,6 +42,7 @@ def main(args=None):
     ))
 
     sys.stdout.write('File size check: ')
+    sys.stdout.flush()
     passed_size_check = filesize_check(
         local_filepath=args['local_filepath'],
         object_container=args['remote_container'],
@@ -50,6 +51,7 @@ def main(args=None):
     sys.stdout.write('{}\n'.format('Passed' if passed_size_check else 'Failed'))
 
     sys.stdout.write('MD5 checksum check: ')
+    sys.stdout.flush()
     passed_md5_check = md5_check(
         local_filepath=args['local_filepath'],
         object_container=args['remote_container'],
