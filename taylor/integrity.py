@@ -21,13 +21,14 @@ def populate_parser(parser):
     :return: argparse.ArgumentParser Populated argument parser
     """
     parser.add_argument('--local-filepath', required=True, help='Path to local file')
-    parser.add_argument('--remote-container', required=True,
+    parser.add_argument('--container-remote', required=True,
                         help='Name of object store container housing the remote object')
-    parser.add_argument('--remote-object', required=True, help='Name of the remote object')
+    parser.add_argument('--object-remote', required=True, help='Name of the remote object')
     parser.add_argument('--segment-size', type=int, default=0,
                         help='Size of each segment for the remote object')
     parser.add_argument('--segment-container', help='Name of the object store container house the '
                                                     'remote object segments')
+    parser.add_argument('--verbose', '-v', action='count', help='Verbosity level')
 
 
 def main(args=None):
@@ -38,15 +39,15 @@ def main(args=None):
 
     sys.stdout.write('Comparing {local} against {remote}\n'.format(
         local=args['local_filepath'],
-        remote='/'.join([args['remote_container'], args['remote_object']])
+        remote='/'.join([args['container_remote'], args['object_remote']])
     ))
 
     sys.stdout.write('File size check: ')
     sys.stdout.flush()
     passed_size_check = filesize_check(
         local_filepath=args['local_filepath'],
-        object_container=args['remote_container'],
-        object_name=args['remote_object']
+        object_container=args['container_remote'],
+        object_name=args['object_remote']
     )
     sys.stdout.write('{}\n'.format('Passed' if passed_size_check else 'Failed'))
 
@@ -54,15 +55,17 @@ def main(args=None):
     sys.stdout.flush()
     passed_md5_check = md5_check(
         local_filepath=args['local_filepath'],
-        object_container=args['remote_container'],
-        object_name=args['remote_object'],
+        object_container=args['container_remote'],
+        object_name=args['object_remote'],
         segment_size=args['segment_size'],
-        segment_container=args['segment_container']
+        segment_container=args['segment_container'],
+        verbosity=args['verbose']
     )
     sys.stdout.write('{}\n'.format('Passed' if passed_md5_check else 'Failed'))
 
 
-def check_integrity(local_filepath, object_container, object_name, segment_size=0, segment_container=None):
+def check_integrity(local_filepath, object_container, object_name, segment_size=0, segment_container=None,
+                    verbosity=0):
     """
     Performs both file size and md5 integrity checks on a local file and a remote object in the object store.
     :param local_filepath: str Filepath to the local file to check against the remote object store
@@ -85,7 +88,7 @@ def check_integrity(local_filepath, object_container, object_name, segment_size=
     )
 
 
-def filesize_check(local_filepath, object_container, object_name):
+def filesize_check(local_filepath, object_container, object_name, verbosity=0):
     """
     Given a file on the local filesystem and a corresponding object in the object store,
     will check to ensure filesize in bytes is the same between local and remote.
@@ -113,7 +116,8 @@ def filesize_check(local_filepath, object_container, object_name):
     return int(content_length_search.group(1)) == os.path.getsize(local_filepath)
 
 
-def md5_check(local_filepath, object_container, object_name, segment_size=0, segment_container=None):
+def md5_check(local_filepath, object_container, object_name, segment_size=0, segment_container=None,
+              verbosity=0):
     """
     Given a file on the local filesystem and a corresponding object in the object store,
     will do an md5 check to ensure data integrity between local and remote. It does so
@@ -132,6 +136,7 @@ def md5_check(local_filepath, object_container, object_name, segment_size=0, seg
     :param object_name: str Name of the object in the remote object store
     :param segment_size: int Size of each segment for the remote object
     :param segment_container: str Name of the container housing the segments for the remote object
+    :param verbosity: int Level of output verbosity to stderr
     :return: bool Whether the local file matches the remote md5 checksum
     """
     try:
@@ -168,11 +173,13 @@ def md5_check(local_filepath, object_container, object_name, segment_size=0, seg
         return local_md5 == remote_md5
     else:
         # Object is segmented, so get md5 segment-by-segment
+        manifest_name = '/'.join(manifest_search.group(1).strip().split('/')[1:])
+
         # Get segment names
         segment_container = segment_container if segment_container else object_container + '_segments'
-        segments = subprocess.check_output('swift list {container} --prefix {object}'.format(
+        segments = subprocess.check_output('swift list {container} --prefix {manifest}'.format(
             container=segment_container,
-            object=object_name
+            manifest=manifest_name
         ), shell=True).strip().split()
 
         # Get remote segment md5s from the object store
@@ -195,6 +202,10 @@ def md5_check(local_filepath, object_container, object_name, segment_size=0, seg
         with open(local_filepath, 'rb') as local_file:
             for local_seg in iter(partial(local_file.read, segment_size), ''):
                 local_segment_md5s.add(md5(local_seg).hexdigest().strip())
+
+        if verbosity >= 1:
+            sys.stderr.write('\nRemote md5s: {}\n'.format(remote_segment_md5s))
+            sys.stderr.write('Local md5s: {}\n'.format(local_segment_md5s))
 
         # Return whether the md5s are equal
         return local_segment_md5s == remote_segment_md5s
